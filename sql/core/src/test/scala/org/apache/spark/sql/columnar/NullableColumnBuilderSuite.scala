@@ -17,35 +17,38 @@
 
 package org.apache.spark.sql.columnar
 
-import org.scalatest.FunSuite
-
-import org.apache.spark.sql.execution.SparkSqlSerializer
+import org.apache.spark.SparkFunSuite
+import org.apache.spark.sql.catalyst.CatalystTypeConverters
+import org.apache.spark.sql.catalyst.expressions.GenericMutableRow
 import org.apache.spark.sql.types._
 
-class TestNullableColumnBuilder[T <: DataType, JvmType](columnType: ColumnType[T, JvmType])
-  extends BasicColumnBuilder[T, JvmType](new NoopColumnStats, columnType)
+class TestNullableColumnBuilder[JvmType](columnType: ColumnType[JvmType])
+  extends BasicColumnBuilder[JvmType](new NoopColumnStats, columnType)
   with NullableColumnBuilder
 
 object TestNullableColumnBuilder {
-  def apply[T <: DataType, JvmType](columnType: ColumnType[T, JvmType], initialSize: Int = 0) = {
+  def apply[JvmType](columnType: ColumnType[JvmType], initialSize: Int = 0)
+    : TestNullableColumnBuilder[JvmType] = {
     val builder = new TestNullableColumnBuilder(columnType)
     builder.initialize(initialSize)
     builder
   }
 }
 
-class NullableColumnBuilderSuite extends FunSuite {
-  import ColumnarTestUtils._
+class NullableColumnBuilderSuite extends SparkFunSuite {
+  import org.apache.spark.sql.columnar.ColumnarTestUtils._
 
   Seq(
-    INT, LONG, SHORT, BOOLEAN, BYTE, STRING, DOUBLE, FLOAT, FIXED_DECIMAL(15, 10), BINARY, GENERIC,
-    DATE, TIMESTAMP
-  ).foreach {
+    BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE,
+    STRING, BINARY, COMPACT_DECIMAL(15, 10), LARGE_DECIMAL(20, 10),
+    STRUCT(StructType(StructField("a", StringType) :: Nil)),
+    ARRAY(ArrayType(IntegerType)), MAP(MapType(IntegerType, StringType)))
+    .foreach {
     testNullableColumnBuilder(_)
   }
 
-  def testNullableColumnBuilder[T <: DataType, JvmType](
-      columnType: ColumnType[T, JvmType]): Unit = {
+  def testNullableColumnBuilder[JvmType](
+      columnType: ColumnType[JvmType]): Unit = {
 
     val typeName = columnType.getClass.getSimpleName.stripSuffix("$")
 
@@ -53,7 +56,6 @@ class NullableColumnBuilderSuite extends FunSuite {
       val columnBuilder = TestNullableColumnBuilder(columnType)
       val buffer = columnBuilder.build()
 
-      assertResult(columnType.typeId, "Wrong column type ID")(buffer.getInt())
       assertResult(0, "Wrong null count")(buffer.getInt())
       assert(!buffer.hasRemaining)
     }
@@ -68,7 +70,6 @@ class NullableColumnBuilderSuite extends FunSuite {
 
       val buffer = columnBuilder.build()
 
-      assertResult(columnType.typeId, "Wrong column type ID")(buffer.getInt())
       assertResult(0, "Wrong null count")(buffer.getInt())
     }
 
@@ -76,6 +77,8 @@ class NullableColumnBuilderSuite extends FunSuite {
       val columnBuilder = TestNullableColumnBuilder(columnType)
       val randomRow = makeRandomRow(columnType)
       val nullRow = makeNullRow(1)
+      val dataType = columnType.dataType
+      val converter = CatalystTypeConverters.createToScalaConverter(dataType)
 
       (0 until 4).foreach { _ =>
         columnBuilder.appendFrom(randomRow, 0)
@@ -84,21 +87,17 @@ class NullableColumnBuilderSuite extends FunSuite {
 
       val buffer = columnBuilder.build()
 
-      assertResult(columnType.typeId, "Wrong column type ID")(buffer.getInt())
       assertResult(4, "Wrong null count")(buffer.getInt())
 
       // For null positions
       (1 to 7 by 2).foreach(assertResult(_, "Wrong null position")(buffer.getInt()))
 
       // For non-null values
+      val actual = new GenericMutableRow(new Array[Any](1))
       (0 until 4).foreach { _ =>
-        val actual = if (columnType == GENERIC) {
-          SparkSqlSerializer.deserialize[Any](GENERIC.extract(buffer))
-        } else {
-          columnType.extract(buffer)
-        }
-
-        assert(actual === randomRow(0), "Extracted value didn't equal to the original one")
+        columnType.extract(buffer, actual, 0)
+        assert(converter(actual.get(0, dataType)) === converter(randomRow.get(0, dataType)),
+          "Extracted value didn't equal to the original one")
       }
 
       assert(!buffer.hasRemaining)

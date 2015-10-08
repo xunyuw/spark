@@ -20,8 +20,8 @@ rem
 rem Figure out where the Spark framework is installed
 set SPARK_HOME=%~dp0..
 
-rem Load environment variables from conf\spark-env.cmd, if it exists
-if exist "%SPARK_HOME%\conf\spark-env.cmd" call "%SPARK_HOME%\conf\spark-env.cmd"
+call %SPARK_HOME%\bin\load-spark-env.cmd
+set _SPARK_CMD_USAGE=Usage: bin\pyspark.cmd [options]
 
 rem Figure out which Python to use.
 if "x%PYSPARK_DRIVER_PYTHON%"=="x" (
@@ -35,4 +35,4 @@ set PYTHONPATH=%SPARK_HOME%\python\lib\py4j-0.8.2.1-src.zip;%PYTHONPATH%
 set OLD_PYTHONSTARTUP=%PYTHONSTARTUP%
 set PYTHONSTARTUP=%SPARK_HOME%\python\pyspark\shell.py
 
-call %SPARK_HOME%\bin\spark-submit2.cmd pyspark-shell-main %*
+call %SPARK_HOME%\bin\spark-submit2.cmd pyspark-shell-main --name "PySparkShell" %*

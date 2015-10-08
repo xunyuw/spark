@@ -39,7 +39,7 @@ import org.apache.spark.streaming.receiver.Receiver
 */
 private[streaming]
 class TwitterInputDStream(
-    @transient ssc_ : StreamingContext,
+    ssc_ : StreamingContext,
     twitterAuth: Option[Authorization],
     filters: Seq[String],
     storageLevel: StorageLevel
@@ -70,7 +70,7 @@ class TwitterReceiver(
     try {
       val newTwitterStream = new TwitterStreamFactory().getInstance(twitterAuth)
       newTwitterStream.addListener(new StatusListener {
-        def onStatus(status: Status) = {
+        def onStatus(status: Status): Unit = {
           store(status)
         }
         // Unimplemented

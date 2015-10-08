@@ -20,13 +20,13 @@ package org.apache.spark.mllib.linalg
 import java.util.Random
 
 import org.mockito.Mockito.when
-import org.scalatest.FunSuite
 import org.scalatest.mock.MockitoSugar._
 import scala.collection.mutable.{Map => MutableMap}
 
+import org.apache.spark.SparkFunSuite
 import org.apache.spark.mllib.util.TestingUtils._
 
-class MatricesSuite extends FunSuite {
+class MatricesSuite extends SparkFunSuite {
   test("dense matrix construction") {
     val m = 3
     val n = 2
@@ -72,6 +72,24 @@ class MatricesSuite extends FunSuite {
     intercept[IllegalArgumentException] {
       Matrices.sparse(3, 2, Array(0, 1, 2), Array(1, 2), Array(0.0, 1.0, 2.0))
     }
+  }
+
+  test("equals") {
+    val dm1 = Matrices.dense(2, 2, Array(0.0, 1.0, 2.0, 3.0))
+    assert(dm1 === dm1)
+    assert(dm1 !== dm1.transpose)
+
+    val dm2 = Matrices.dense(2, 2, Array(0.0, 2.0, 1.0, 3.0))
+    assert(dm1 === dm2.transpose)
+
+    val sm1 = dm1.asInstanceOf[DenseMatrix].toSparse
+    assert(sm1 === sm1)
+    assert(sm1 === dm1)
+    assert(sm1 !== sm1.transpose)
+
+    val sm2 = dm2.asInstanceOf[DenseMatrix].toSparse
+    assert(sm1 === sm2.transpose)
+    assert(sm1 === dm2.transpose)
   }
 
   test("matrix copies are deep copies") {
@@ -436,5 +454,33 @@ class MatricesSuite extends FunSuite {
     Seq(dm1, dm2, dm3, sm1, sm2, sm3).foreach {
         mat => assert(mat.toArray === mUDT.deserialize(mUDT.serialize(mat)).toArray)
     }
+    assert(mUDT.typeName == "matrix")
+    assert(mUDT.simpleString == "matrix")
+  }
+
+  test("toString") {
+    val empty = Matrices.ones(0, 0)
+    empty.toString(0, 0)
+
+    val mat = Matrices.rand(5, 10, new Random())
+    mat.toString(-1, -5)
+    mat.toString(0, 0)
+    mat.toString(Int.MinValue, Int.MinValue)
+    mat.toString(Int.MaxValue, Int.MaxValue)
+    var lines = mat.toString(6, 50).lines.toArray
+    assert(lines.size == 5 && lines.forall(_.size <= 50))
+
+    lines = mat.toString(5, 100).lines.toArray
+    assert(lines.size == 5 && lines.forall(_.size <= 100))
+  }
+
+  test("numNonzeros and numActives") {
+    val dm1 = Matrices.dense(3, 2, Array(0, 0, -1, 1, 0, 1))
+    assert(dm1.numNonzeros === 3)
+    assert(dm1.numActives === 6)
+
+    val sm1 = Matrices.sparse(3, 2, Array(0, 2, 3), Array(0, 2, 1), Array(0.0, -1.2, 0.0))
+    assert(sm1.numNonzeros === 1)
+    assert(sm1.numActives === 3)
   }
 }
